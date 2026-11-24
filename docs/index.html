@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trinity-256 — Emulator &amp; RTL</title>
+<style>
+:root{--bg:#0e1411;--panel:#16201b;--line:#25352c;--fg:#e6efe9;--mut:#8fa598;--acc:#4fd69c;--acc2:#7cc4ff;--warn:#f0b35a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+header{padding:64px 0 36px;border-bottom:1px solid var(--line)}
+h1{font-size:clamp(2rem,6vw,3.2rem);margin:0 0 8px;letter-spacing:-.02em}
+h1 span{color:var(--acc)}
+.sub{color:var(--mut);max-width:680px;margin:0 0 22px}
+.btns a{display:inline-block;margin:0 10px 10px 0;padding:9px 16px;border-radius:8px;border:1px solid var(--line);color:var(--fg);text-decoration:none;font-weight:600}
+.btns a.p{background:var(--acc);color:#06150d;border-color:var(--acc)}
+section{padding:40px 0;border-bottom:1px solid var(--line)}
+h2{margin:0 0 6px;font-size:1.5rem}
+.lead{color:var(--mut);margin:0 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card b{display:block;font-size:1.7rem;color:var(--acc);line-height:1.1}
+.card small{color:var(--mut)}
+pre{background:#0a0f0c;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfe6d8}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--acc2);font-size:.92em}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:.75rem;font-weight:700;margin-right:6px}
+.emu{background:#12303a;color:var(--acc2)}.rtl{background:#173a2a;color:var(--acc)}
+.tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{background:var(--panel);color:var(--fg);border:1px solid var(--line);padding:7px 14px;border-radius:8px;cursor:pointer;font:inherit}
+.tabs button[aria-pressed=true]{background:var(--acc);color:#06150d;border-color:var(--acc);font-weight:700}
+ul.lim li{margin:6px 0;color:var(--mut)} ul.lim li::marker{color:var(--warn)}
+svg text{font:12px system-ui,sans-serif;fill:var(--fg)}
+footer{padding:30px 0 60px;color:var(--mut);font-size:.9rem}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Trinity<span>-256</span></h1>
+  <p class="sub">A heterogeneous neural superchip — 256 tiles, each pairing a RISC-V control core with a Coral NPU and an NVDLA tensor engine. This repo holds a working ISA emulator and the hierarchical SystemVerilog RTL, both corrected against the architecture manual.</p>
+  <div class="btns">
+    <a class="p" href="https://github.com/lucky-edgelord/jade-agent-jpu">View on GitHub</a>
+    <a href="https://github.com/lucky-edgelord/jade-agent-jpu/blob/main/emulator/trinity_emu.py">Emulator</a>
+    <a href="https://github.com/lucky-edgelord/jade-agent-jpu/blob/main/rtl/trinity256_rtl.sv">RTL</a>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <h2>At a glance</h2><p class="lead">Headline numbers at 1.2 GHz, 3 nm (from the specification).</p>
+  <div class="grid">
+    <div class="card"><b>256</b><small>tiles: 4 chiplets × 16 quads × 4 tiles</small></div>
+    <div class="card"><b>471.9</b><small>peak INT8 TOPS (314.6 NVDLA + 157.3 Coral)</small></div>
+    <div class="card"><b>768 MB</b><small>on-package SRAM (256×2 MB + 64×4 MB)</small></div>
+    <div class="card"><b>9.6 TB/s</b><small>aggregate HBM3E bandwidth, 8 stacks</small></div>
+    <div class="card"><b>&lt;15 W – 300 W</b><small>P3 sentinel standby to P0 full saturation</small></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Hierarchy</h2><p class="lead">Four levels, each with its own interconnect.</p>
+  <svg viewBox="0 0 900 190" width="100%" role="img" aria-label="Package, chiplet, quad, tile hierarchy">
+    <g fill="none" stroke="#25352c" stroke-width="1.5">
+      <rect x="10" y="20" width="200" height="150" rx="12" fill="#16201b"/>
+      <rect x="240" y="20" width="200" height="150" rx="12" fill="#16201b"/>
+      <rect x="470" y="20" width="200" height="150" rx="12" fill="#16201b"/>
+      <rect x="700" y="20" width="190" height="150" rx="12" fill="#16201b"/>
+    </g>
+    <g stroke="#4fd69c" stroke-width="2"><path d="M212 95h26M442 95h26M672 95h26" marker-end="url(#a)"/></g>
+    <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#4fd69c"/></marker></defs>
+    <text x="24" y="48" font-weight="700">Package</text><text x="24" y="72">4 chiplets, UCIe</text><text x="24" y="92">8× HBM3E</text><text x="24" y="112">768 MB SRAM</text>
+    <text x="254" y="48" font-weight="700">Chiplet</text><text x="254" y="72">16 quads, 64 tiles</text><text x="254" y="92">4×4 folded torus</text><text x="254" y="112">1024-bit, VC0–VC3</text>
+    <text x="484" y="48" font-weight="700">Quad</text><text x="484" y="72">4 tiles, 512-bit xbar</text><text x="484" y="92">4 MB shared L3</text><text x="484" y="112">64 semaphores</text>
+    <text x="714" y="48" font-weight="700">Tile</text><text x="714" y="72">RV64 + Coral + NVDLA</text><text x="714" y="92">2 MB dual-port SRAM</text><text x="714" y="112">128-bit AXI4</text>
+  </svg>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Emulator</h2>
+  <p class="lead">One file, standard library only. It assembles text to 32-bit words, decodes them, and executes against real state — the engines do real arithmetic.</p>
+<pre>python3 emulator/trinity_emu.py            # self-tests + demos
+python3 emulator/trinity_emu.py prog.asm   # assemble + run
+
+NVDLA.GEMM  INT8 MxK  x  INT8 KxN  -&gt;  INT32 MxN
+CORAL.MAC   16x16 INT8 tiles       -&gt;  16x16 INT32
+CORAL.ACT   ReLU / SwiGLU / Softmax / RMSNorm
+NOC.REDUCE  sum a word across up to 4 simulated tiles</pre>
+  <p>The spec leaves gaps (no K dimension for GEMM, no tensor length for ACT, and so on). The emulator defines an explicit <code>Emulator ABI v1</code> for them and logs a warning whenever one matters.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What was fixed</h2>
+  <div class="tabs" role="group" aria-label="Filter">
+    <button aria-pressed="true" data-f="all">All</button>
+    <button aria-pressed="false" data-f="emu">Emulator</button>
+    <button aria-pressed="false" data-f="rtl">RTL</button>
+  </div>
+  <table id="fixes"><thead><tr><th>Area</th><th>Problem → fix</th></tr></thead><tbody>
+    <tr data-k="emu"><td><span class="tag emu">EMU</span>LUI</td><td>Not sign-extended. Now <code>sext(imm20&lt;&lt;12)</code> per the manual.</td></tr>
+    <tr data-k="emu"><td><span class="tag emu">EMU</span>NOC.REDUCE</td><td>Ignored <code>R[rs2]</code>. Now sums that many shards (0 = all 4); bounds-checked.</td></tr>
+    <tr data-k="emu"><td><span class="tag emu">EMU</span>Coral TCM</td><td>One flat 64 KB buffer. Now 8 KB ITCM @ 0x0 and 32 KB DTCM @ 0x8000; the gap faults.</td></tr>
+    <tr data-k="emu"><td><span class="tag emu">EMU</span>Semaphores</td><td>No doorbell. Now armed flag + doorbell at zero; <code>CORAL.ACT</code> no longer consumes counts.</td></tr>
+    <tr data-k="emu"><td><span class="tag emu">EMU</span>Bounds</td><td><code>CORAL.MAC</code> output tile and GEMM sizes checked; illegal instructions halt cleanly.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Quad crossbar</td><td>Acked every requesting tile. Now only the granted one.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Quad SRAM</td><td>Writes clobbered all 4 lanes. Now byte-enabled per lane.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Read timing</td><td>Data returned in the request cycle despite 1-cycle SRAM latency. Responses now registered.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>HBM flag</td><td><code>dst_quad==0xF</code> collided with real Quad 15. Replaced by a <code>gw_hbm</code> bit; flit is exactly 1024 bits.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Remote access</td><td>Coordinate bits bounced requests back up the uplink. Now the 32-bit local offset is used.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>AllReduce</td><td>Accumulator never cleared. Now absorbs N contributions, emits the sum, resets.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Gateways / UCIe</td><td>Flits circled the torus; rows 2–3 had no HBM path; UCIe ingress was missing; diagonal traffic duplicated. All fixed.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>SRAM &amp; clocks</td><td>Dual-writer <code>always_ff</code> is illegal; <code>clk &amp; en</code> glitches. Now plain <code>always</code> and a latch-based clock gate.</td></tr>
+  </tbody></table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Known limitations</h2>
+  <ul class="lim">
+    <li>The torus router has no input FIFOs or credit flow control, so simultaneous transit flits collide.</li>
+    <li>There is no read-response path for global NoC or HBM reads.</li>
+    <li><code>hbm_req_addr</code> is 34 bits; 288 GB of HBM needs 39.</li>
+    <li>P1 power state is identical to P0 (HBM self-refresh not modelled).</li>
+    <li>The RTL lints clean but has not been simulated.</li>
+  </ul>
+</div></section>
+
+<footer><div class="wrap">Trinity-256 · spec SIL-ARCH-TRINITY256-001 / manual TRINITY256-PRM-2026-V1</div></footer>
+
+<script>
+document.querySelectorAll('.tabs button').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.tabs button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});
+    var f=b.dataset.f;
+    document.querySelectorAll('#fixes tbody tr').forEach(function(r){
+      r.style.display=(f==='all'||r.dataset.k===f)?'':'none';
+    });
+  });
+});
+</script>
+</body>
+</html>
