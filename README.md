@@ -1,12 +1,14 @@
 # Trinity-256 — emulator + RTL
 
+**Webpage:** <https://lucky-edgelord.github.io/jade-agent-jpu/> (GitHub Pages, source `/docs`) · [source: `docs/index.html`](docs/index.html)
+
 Heterogeneous many-core RISC-V + neural tensor superchip (256 tiles: RV64 + Coral NPU + NVDLA).
 
 | Path | What |
 | --- | --- |
 | `emulator/trinity_emu.py` | Single-file, stdlib-only ISA emulator (assembler → decoder → real GEMM / MAC / ACT / AllReduce). |
 | `rtl/trinity256_rtl.sv` | Hierarchical SystemVerilog: tile → quad → torus router → chiplet → package. |
-| `docs/index.html` | Project webpage (enable GitHub Pages → `/docs`). |
+| `docs/index.html` | [Project webpage](https://lucky-edgelord.github.io/jade-agent-jpu/) (served by GitHub Pages from `/docs`). |
 
 ## Run
 ```
