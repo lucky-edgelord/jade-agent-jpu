@@ -516,13 +516,14 @@
   }
 
   // ----------------------------------------------------------------- examples
-  const flat = (rows) => rows.map((r) => r.join(', ')).join(',\n      ');
+  // one directive per matrix row (directives are single-line)
+  const rowsDir = (kind, base, rows) => rows.map((r, i) => `.${kind} 0x${(base + i * r.length).toString(16)} ${r.join(', ')}`).join('\n');
   const GEMM_A = [[1, 2, 0, 1, 3, 0, 2, 1], [0, 1, 2, 0, 1, 1, 0, 2], [2, 0, 1, 1, 0, 2, 1, 0], [1, 1, 1, 0, 2, 0, 1, 1]];
   const GEMM_B = [[1, 0, 2, 1], [0, 1, 1, 0], [2, 1, 0, 1], [1, 0, 1, 2], [0, 2, 1, 0], [1, 1, 0, 1], [0, 0, 2, 1], [2, 1, 0, 0]];
   const gemmProg = (act, title) => `; ${title}
 ; ABI v1: A (INT8 4x8) @ Tile SRAM 0x1000, B (INT8 8x4) @ HBM 0, C (INT32 4x4) @ Tile SRAM 0
-.sram 0x1000 ${flat(GEMM_A)}
-.hbm  0      ${flat(GEMM_B)}
+${rowsDir('sram', 0x1000, GEMM_A)}
+${rowsDir('hbm', 0, GEMM_B)}
 
 PWR.MODE 0
 LUI  x10, 0x200          ; x10 = Tile SRAM base 0x00200000
