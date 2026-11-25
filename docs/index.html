@@ -111,17 +111,21 @@ NOC.REDUCE  sum a word across up to 4 simulated tiles</pre>
     <tr data-k="rtl"><td><span class="tag rtl">RTL</span>AllReduce</td><td>Accumulator never cleared. Now absorbs N contributions, emits the sum, resets.</td></tr>
     <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Gateways / UCIe</td><td>Flits circled the torus; rows 2–3 had no HBM path; UCIe ingress was missing; diagonal traffic duplicated. All fixed.</td></tr>
     <tr data-k="rtl"><td><span class="tag rtl">RTL</span>SRAM &amp; clocks</td><td>Dual-writer <code>always_ff</code> is illegal; <code>clk &amp; en</code> glitches. Now plain <code>always</code> and a latch-based clock gate.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Router FIFOs</td><td>2-entry FIFOs with round-robin and credit that counts the in-flight flit; no more dropped flits.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Quad ingress</td><td>New ingress FIFO; remote reads stall at the head instead of being lost.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Read return</td><td><code>RD_RESP</code> path for remote and HBM reads; HBM response carries address and lane.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>Gateway</td><td>Rotating token lets one row per cycle reach the HBM/UCIe tap.</td></tr>
+    <tr data-k="rtl"><td><span class="tag rtl">RTL</span>HBM / power</td><td>39-bit HBM addresses; distinct P1; self-refresh blocks HBM requests.</td></tr>
   </tbody></table>
 </div></section>
 
 <section><div class="wrap">
   <h2>Known limitations</h2>
   <ul class="lim">
-    <li>The torus router has no input FIFOs or credit flow control, so simultaneous transit flits collide.</li>
-    <li>There is no read-response path for global NoC or HBM reads.</li>
-    <li><code>hbm_req_addr</code> is 34 bits; 288 GB of HBM needs 39.</li>
-    <li>P1 power state is identical to P0 (HBM self-refresh not modelled).</li>
-    <li>The RTL lints clean but has not been simulated.</li>
+    <li>One outstanding off-tile read per tile (<code>\1</code>)</li>
+    <li>Edge and UCIe injection ignore <code>\1</code>; UCIe transmit has no backpressure</li>
+    <li>Emulator <code>\1</code> has no destination tile / engine field (the RTL does)</li>
+    <li>RTL is lint-clean (slang, 0 diagnostics) but <b>\1</b>; FIFO credit rule is checked by <code>\1</code>, a Python model, not the RTL</li>
   </ul>
 </div></section>
 

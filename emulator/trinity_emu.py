@@ -55,15 +55,10 @@ Running it
 ----------
     python3 trinity_emu.py            # runs the built-in self-tests + demos
     python3 trinity_emu.py prog.asm   # assemble + run a program file
-
-The manual's Chapter 6 sample is run literally in the self-test
-(`demo_manual_sample`) — it assembles and halts, but computes nothing,
-because of G1/G2. The corrected program (`demo_real_gemm`) is the one
-that actually multiplies matrices, and its result is checked against a
-plain-Python reference matmul.
 """
 
 import math
+import re
 import struct
 import sys
 
@@ -149,9 +144,6 @@ def enc_r(opcode, rd, funct3, rs1, rs2, funct7):
 
 
 def _range_check(val, lo, hi, what):
-    # FIX (2026-11-24): immediates used to be silently masked (& 0xFFF),
-    # so `ADDI x11, x10, 0x2000` quietly assembled to `ADDI x11, x10, 0`.
-    # Out-of-range immediates are now a hard assembly error.
     if not (lo <= val <= hi):
         raise ValueError(f"{what} {val} out of range [{lo}, {hi}]")
 
@@ -195,13 +187,11 @@ def enc_j(opcode, rd, offset):
             | (rd & 0x1F) << 7 | (opcode & 0x7F))
 
 
-def assemble(src):
-    """Assemble Trinity assembly text. Returns (words, listing).
+_MEM_OPERAND_RE = re.compile(r"^(-?\d+|-?0x[0-9a-fA-F]+)\(([^)]+)\)$")
 
-    listing: list of (addr, word, text) for the trace / hex dump.
-    Supports labels (`loop:`), `;` / `#` comments, and every mnemonic in
-    Manual Ch. 4.2 and 5.1.
-    """
+
+def assemble(src):
+    """Assemble Trinity assembly text. Returns (words, listing)."""
     lines = []
     labels = {}
     addr = 0
@@ -211,7 +201,10 @@ def assemble(src):
             continue
         while ":" in line:
             lbl, rest = line.split(":", 1)
-            labels[lbl.strip().upper()] = addr
+            lbl_key = lbl.strip().upper()
+            if lbl_key in labels:
+                raise ValueError(f"duplicate label '{lbl.strip()}'")
+            labels[lbl_key] = addr
             line = rest.strip()
             if not line:
                 break
@@ -231,50 +224,74 @@ def assemble(src):
             return parse_imm(tok)
 
         if op in ("ADD", "SUB", "MUL", "AND", "OR", "XOR"):
+            if len(toks) != 4:
+                raise ValueError(f"{op} requires 3 operands: {line}")
             rd, rs1, rs2 = parse_reg(toks[1]), parse_reg(toks[2]), parse_reg(toks[3])
             f3 = {"AND": 7, "OR": 6, "XOR": 4}.get(op, 0)
             f7 = 0x20 if op == "SUB" else 0x01 if op == "MUL" else 0x00
             word = enc_r(0x33, rd, f3, rs1, rs2, f7)
         elif op == "ADDI":
+            if len(toks) != 4:
+                raise ValueError(f"ADDI requires 3 operands: {line}")
             word = enc_i(0x13, parse_reg(toks[1]), 0, parse_reg(toks[2]),
                          parse_imm(toks[3]))
         elif op == "LUI":
+            if len(toks) != 3:
+                raise ValueError(f"LUI requires 2 operands: {line}")
             word = enc_u(0x37, parse_reg(toks[1]), parse_imm(toks[2]))
         elif op == "LW":
-            import re as _re
-            m = _re.match(r"^(-?\d+|0x[0-9a-fA-F]+)\(([^)]+)\)$", toks[2])
+            if len(toks) != 3:
+                raise ValueError(f"LW requires 2 operands: {line}")
+            m = _MEM_OPERAND_RE.match(toks[2])
             if not m:
                 raise ValueError(f"bad LW operand '{toks[2]}'")
             word = enc_i(0x03, parse_reg(toks[1]), 2, parse_reg(m.group(2)),
                          parse_imm(m.group(1)))
         elif op == "SW":
-            import re as _re
-            m = _re.match(r"^(-?\d+|0x[0-9a-fA-F]+)\(([^)]+)\)$", toks[2])
+            if len(toks) != 3:
+                raise ValueError(f"SW requires 2 operands: {line}")
+            m = _MEM_OPERAND_RE.match(toks[2])
             if not m:
                 raise ValueError(f"bad SW operand '{toks[2]}'")
             word = enc_s(0x23, 2, parse_reg(m.group(2)), parse_reg(toks[1]),
                          parse_imm(m.group(1)))
         elif op in ("BEQ", "BNE"):
+            if len(toks) != 4:
+                raise ValueError(f"{op} requires 3 operands: {line}")
             word = enc_b(0x63, 0 if op == "BEQ" else 1,
                          parse_reg(toks[1]), parse_reg(toks[2]), target(toks[3]))
         elif op == "JAL":
+            if len(toks) != 3:
+                raise ValueError(f"JAL requires 2 operands: {line}")
             word = enc_j(0x6F, parse_reg(toks[1]), target(toks[2]))
         elif op == "ECALL":
             word = 0x00000073
         elif op == "CORAL.MAC":
+            if len(toks) != 4:
+                raise ValueError(f"CORAL.MAC requires 3 operands: {line}")
             word = enc_r(0x0B, parse_reg(toks[1]), 1,
                          parse_reg(toks[2]), parse_reg(toks[3]), 0x01)
         elif op == "CORAL.ACT":
+            if len(toks) != 4:
+                raise ValueError(f"CORAL.ACT requires 3 operands: {line}")
             word = enc_i(0x0B, parse_reg(toks[1]), 2,
                          parse_reg(toks[2]), parse_imm(toks[3]))
         elif op == "NVDLA.GEMM":
+            if len(toks) != 4:
+                raise ValueError(f"NVDLA.GEMM requires 3 operands: {line}")
             word = enc_r(0x2B, parse_reg(toks[1]), 1,
                          parse_reg(toks[2]), parse_reg(toks[3]), 0x02)
         elif op == "SEM.ARM":
+            if len(toks) != 3:
+                raise ValueError(f"SEM.ARM requires 2 operands: {line}")
             word = enc_i(0x5B, 0, 1, parse_reg(toks[1]), parse_imm(toks[2]))
         elif op == "PWR.MODE":
+            if len(toks) != 2:
+                raise ValueError(f"PWR.MODE requires 1 operand: {line}")
             word = enc_i(0x5B, 0, 2, 0, parse_imm(toks[1]))
         elif op == "NOC.REDUCE":
+            if len(toks) != 4:
+                raise ValueError(f"NOC.REDUCE requires 3 operands: {line}")
             word = enc_r(0x5B, parse_reg(toks[1]), 3,
                          parse_reg(toks[2]), parse_reg(toks[3]), 0x04)
         elif op == "HALT":
@@ -287,7 +304,7 @@ def assemble(src):
 
 
 # ---------------------------------------------------------------------------
-# Decoder: 32-bit word -> instruction dict. This is what actually runs.
+# Decoder: 32-bit word -> instruction dict.
 # ---------------------------------------------------------------------------
 def decode(word):
     opcode = word & 0x7F
@@ -304,7 +321,7 @@ def decode(word):
     imm_j = sext((((word >> 31) & 1) << 20) | (((word >> 12) & 0xFF) << 12)
                  | (((word >> 20) & 1) << 11) | (((word >> 21) & 0x3FF) << 1), 21)
 
-    if opcode == 0x33:  # R-type base
+    if opcode == 0x33:
         op = {(0, 0x00): "ADD", (0, 0x20): "SUB", (0, 0x01): "MUL",
               (7, 0x00): "AND", (6, 0x00): "OR", (4, 0x00): "XOR"}.get((funct3, funct7))
         if op is None:
@@ -357,27 +374,26 @@ class TrinityTile:
     def __init__(self, trace=False):
         self.regs = [0] * 32
         self.pc = 0
-        self.program = []          # list of 32-bit words
-        self.listing = []          # (addr, word, text)
+        self.program = []
+        self.listing = []
         self.sram = bytearray(TILE_SRAM_SIZE)
         self.quad_sram = bytearray(QUAD_SRAM_SIZE)
         self.coral_tcm = bytearray(0x10000)   # 8K ITCM + 32K DTCM + CSRs
         self.hbm = bytearray(HBM_SIZE)
-        self.csb = {}              # NVDLA CSB registers (addr -> value)
-        # 4 tiles, for NOC.REDUCE: tile 0 is this CPU; 1-3 are shard tiles.
+        self.csb = {}
         self.shard_srams = [self.sram, bytearray(TILE_SRAM_SIZE),
                             bytearray(TILE_SRAM_SIZE), bytearray(TILE_SRAM_SIZE)]
         self.semaphores = [0] * 64
         self.sem_armed = [False] * 64
-        self.doorbells = [0] * 64   # pending doorbells (count reached 0)
-        self.power_mode = 3        # P3 sentinel at reset, per spec
+        self.doorbells = [0] * 64
+        self.power_mode = 3
         self.cycles = 0
         self.halted = False
         self.trace = trace
         self.log = []
         self.coral_macs = 0
         self.nvdla_macs = 0
-        self.last_gemm = None     # (M, N, K)
+        self.last_gemm = None
         self.warnings = []
 
     # -- memory ------------------------------------------------------------
@@ -389,12 +405,18 @@ class TrinityTile:
                 raise ValueError(f"access straddles TCM boundary: 0x{addr:08x}")
             return self.coral_tcm, addr - CORAL_BASE
         if NVDLA_CSB_BASE <= addr < NVDLA_CSB_BASE + 0x100000:
-            return None, addr  # CSB: handled by caller
+            return None, addr
         if TILE_SRAM_BASE <= addr < TILE_SRAM_BASE + TILE_SRAM_SIZE:
+            if addr + size > TILE_SRAM_BASE + TILE_SRAM_SIZE:
+                raise ValueError(f"access straddles Tile SRAM end: 0x{addr:08x}")
             return self.sram, addr - TILE_SRAM_BASE
         if QUAD_SRAM_BASE <= addr < QUAD_SRAM_BASE + QUAD_SRAM_SIZE:
+            if addr + size > QUAD_SRAM_BASE + QUAD_SRAM_SIZE:
+                raise ValueError(f"access straddles Quad SRAM end: 0x{addr:08x}")
             return self.quad_sram, addr - QUAD_SRAM_BASE
         if HBM_BASE <= addr < HBM_BASE + HBM_SIZE:
+            if addr + size > HBM_BASE + HBM_SIZE:
+                raise ValueError(f"access straddles HBM window end: 0x{addr:012x}")
             return self.hbm, addr - HBM_BASE
         raise ValueError(f"memory access outside modelled map: 0x{addr:012x}")
 
@@ -411,7 +433,9 @@ class TrinityTile:
             self.csb[addr] = val & MASK32
             return
         if SEM_BASE <= addr < SEM_BASE + 0x10000:
-            self.semaphores[(addr - SEM_BASE) // 4 % 64] = val & MASK32
+            idx = (addr - SEM_BASE) // 4 % 64
+            self.semaphores[idx] = val & MASK32
+            self.sem_armed[idx] = self.semaphores[idx] > 0
             return
         buf, off = self._mem(addr, 4)
         struct.pack_into("<I", buf, off, val & MASK32)
@@ -425,25 +449,43 @@ class TrinityTile:
     def write_sram_i32(self, off, val):
         struct.pack_into("<i", self.sram, off, to_s32(val))
 
-    # -- host loading (what a loader / DBB DMA would do) -------------------
+    # -- host loading ------------------------------------------------------
     def load_program(self, src):
         self.program, self.listing = assemble(src)
         self.pc = 0
         self.halted = False
 
     def load_matrix_i8_sram(self, off, rows):
+        if not rows or not rows[0]:
+            return
+        cols = len(rows[0])
+        if off < 0 or off + len(rows) * cols > TILE_SRAM_SIZE:
+            raise ValueError("matrix exceeds Tile SRAM bounds")
         for r, row in enumerate(rows):
+            if len(row) != cols:
+                raise ValueError("jagged matrix rows are not supported")
             for c, v in enumerate(row):
-                self.sram[off + r * len(row) + c] = v & 0xFF
+                self.sram[off + r * cols + c] = v & 0xFF
 
     def load_matrix_i8_hbm(self, off, rows):
+        if not rows or not rows[0]:
+            return
+        cols = len(rows[0])
+        if off < 0 or off + len(rows) * cols > HBM_SIZE:
+            raise ValueError("matrix exceeds modelled HBM bounds")
         for r, row in enumerate(rows):
+            if len(row) != cols:
+                raise ValueError("jagged matrix rows are not supported")
             for c, v in enumerate(row):
-                self.hbm[off + r * len(row) + c] = v & 0xFF
+                self.hbm[off + r * cols + c] = v & 0xFF
 
     def load_tile_sram(self, tile, addr, words):
         """Preload a 32-bit word list into shard tile `tile`'s SRAM."""
+        if not (0 <= tile < len(self.shard_srams)):
+            raise ValueError(f"invalid shard tile {tile}")
         base = addr - TILE_SRAM_BASE
+        if base < 0 or base + 4 * len(words) > TILE_SRAM_SIZE:
+            raise ValueError(f"preload range out of Tile SRAM: 0x{addr:08x}")
         for i, w in enumerate(words):
             struct.pack_into("<I", self.shard_srams[tile], base + 4 * i, w & MASK32)
 
@@ -458,6 +500,10 @@ class TrinityTile:
     # -- execution ---------------------------------------------------------
     def step(self):
         if self.halted:
+            return False
+        if self.pc % 4 != 0:
+            self.halted = True
+            self.log.append(f"PC 0x{self.pc:04x} misaligned — halted")
             return False
         idx = self.pc // 4
         if idx < 0 or idx >= len(self.program):
@@ -572,13 +618,13 @@ class TrinityTile:
     def _nvdla_gemm(self, ins):
         m = self.r(ins["rs1"])
         n = self.r(ins["rs2"])
-        k = self.r(15)  # ABI v1: K register is x15 (see G1)
-        if k == 0:
-            msg = ("G1 warning: NVDLA.GEMM with K (x15) == 0 — the manual "
-                   "gives no K dimension, so this GEMM is degenerate (0 MACs)")
+        k = self.r(15)
+        if m == 0 or n == 0 or k == 0:
+            msg = ("G1 warning: NVDLA.GEMM with zero dimension (M, N, or K/x15 == 0) — "
+                   "degenerate GEMM (0 MACs)")
             self.warnings.append(msg)
             self.log.append(f"  [WARN] {msg}")
-            self.last_gemm = (m, n, 0)
+            self.last_gemm = (m, n, k)
             self.w(ins["rd"], 0)
             return 2, "GEMM degenerate, 0 MACs"
         macs = m * n * k
@@ -602,7 +648,6 @@ class TrinityTile:
         self.nvdla_macs += macs
         self.last_gemm = (m, n, k)
         self.w(ins["rd"], macs)
-        # doorbell: a completed GEMM decrements semaphore 0 if armed
         self._sem_complete(0)
         return max(2, (macs + 511) // 512), f"GEMM {m}x{k} * {k}x{n} = {macs} MACs -> SRAM[0x{GEMM_C_OFF:04x}]"
 
@@ -614,9 +659,9 @@ class TrinityTile:
         else:
             count = self.last_gemm[0] * self.last_gemm[1]
         off = addr - TILE_SRAM_BASE
-        if not (0 <= off < TILE_SRAM_SIZE - 4 * count):
-            msg = (f"G2 warning: CORAL.ACT address 0x{addr:08x} is outside "
-                   f"Tile SRAM for {count} elements — no-op")
+        if count <= 0 or off < 0 or off + 4 * count > TILE_SRAM_SIZE or (off % 4 != 0):
+            msg = (f"G2 warning: CORAL.ACT address 0x{addr:08x} is invalid/unaligned "
+                   f"for {count} elements — no-op")
             self.warnings.append(msg)
             self.log.append(f"  [WARN] {msg}")
             self.w(ins["rd"], 0)
@@ -637,7 +682,7 @@ class TrinityTile:
                    for v in vals]
         elif kind == 2:
             mx = max(vals) if vals else 0
-            exps = [math.exp((v - mx) / 1000.0) for v in vals]
+            exps = [math.exp(max(-20.0, min(0.0, (v - mx) / 1000.0))) for v in vals]
             s = sum(exps) or 1.0
             out = [round(e / s * 1000) for e in exps]
         elif kind == 3:
@@ -678,8 +723,8 @@ class TrinityTile:
         if shards > 4:
             self.warnings.append(f"NOC.REDUCE shards={shards} > 4 modelled; clamped")
             shards = 4
-        if not (0 <= off <= TILE_SRAM_SIZE - 4):
-            self.warnings.append("NOC.REDUCE address outside Tile SRAM — no-op")
+        if not (0 <= off <= TILE_SRAM_SIZE - 4) or (off % 4 != 0):
+            self.warnings.append("NOC.REDUCE address outside/unaligned in Tile SRAM — no-op")
             self.w(ins["rd"], 0)
             return 2, "REDUCE no-op (bad address)"
         total = 0
@@ -716,7 +761,6 @@ HALT
 
 REAL_GEMM = """\
 ; Corrected program: 4x8 * 8x4 INT8 GEMM, then SwiGLU on C.
-; ABI v1: x15=K, A at SRAM 0x1000, B at HBM 0, C at SRAM 0.
 PWR.MODE 0
 LUI  x10, 0x200          ; x10 = Tile SRAM base 0x00200000
 ADDI x11, x0, 4          ; M = 4
@@ -739,8 +783,6 @@ ADD  x5, x5, x6
 ADDI x6, x6, 1
 BNE  x6, x7, loop
 LUI  x10, 0x200
-; NOTE: ADDI immediates are 12-bit, so 0x2000/0x2100/0x3000 do NOT fit
-; in one ADDI (they would be masked to 0x000/0x100/0x000). Use LUI.
 LUI  x11, 0x202          ; A tile @ 0x00202000 (SRAM+0x2000)
 LUI  x12, 0x202
 ADDI x12, x12, 0x100     ; B tile @ 0x00202100 (SRAM+0x2100)
@@ -764,8 +806,6 @@ def demo_manual_sample():
     print(f"   halted={cpu.halted} cycles={cpu.cycles} "
           f"x13(MACs)={cpu.r(13)} x14={cpu.r(14)} sem0={cpu.semaphores[0]}")
     print("   warnings:", cpu.warnings or "none")
-    print("   -> It assembles, decodes and halts. But x13 = 0 MACs: the manual")
-    print("      never gives K, so no real GEMM could run. That is spec gap G1.")
     return cpu
 
 
@@ -786,7 +826,6 @@ def demo_real_gemm():
     for line in cpu.log:
         print("   " + line)
     got = [[cpu.read_sram_i32(4 * (i * 4 + j)) for j in range(4)] for i in range(4)]
-    # SwiGLU was applied in place, so compare against activated reference:
     exp_act = [round(v * (1.0 / (1.0 + math.exp(-max(-10.0, min(10.0, v / 1000.0))))))
                for row in expected for v in row]
     got_flat = [v for row in got for v in row]
@@ -804,14 +843,10 @@ def demo_real_gemm():
 def demo_reduce_and_mac():
     print("\n== Demo 3: Loop + CORAL.MAC tile + NOC.REDUCE ==")
     cpu = TrinityTile(trace=True)
-    # A tile: identity-ish (1s on diagonal), B tile: all 2s, at SRAM offsets
     a = [[1 if i == j else 0 for j in range(16)] for i in range(16)]
     b = [[2 for _ in range(16)] for _ in range(16)]
     cpu.load_matrix_i8_sram(0x2000, a)
     cpu.load_matrix_i8_sram(0x2100, b)
-    # shard tiles 1..3 hold the same word at SRAM+0x3000 as tile 0 will
-    # compute there (C[0][0] = 2). Preload them with 10, 20, 30; tile 0
-    # computes 2, so the reduce should give 2+10+20+30 = 62.
     for tile, val in ((1, 10), (2, 20), (3, 30)):
         cpu.load_tile_sram(tile, TILE_SRAM_BASE + 0x3000, [val])
     cpu.load_program(REDUCE_PROG)
@@ -845,25 +880,22 @@ def test_encodings():
         status = "OK " if got == want else "FAIL"
         print(f"   {status} {src:<28} -> 0x{got:08x} (manual: 0x{want:08x})")
         assert got == want, f"{src}: got 0x{got:08x}, want 0x{want:08x}"
-    # decode round-trip: the words must decode back to the same instruction
     for src, _ in cases:
         (word,), _ = assemble(src)
         ins = decode(word)
         assert ins["op"] == src.split()[0], f"decode mismatch for {src}: {ins}"
     print("   PASS: all six Appendix A words encode and decode correctly.")
-    # x0 hardwired, and a bad opcode must fail loudly, not silently run
     cpu = TrinityTile()
     cpu.load_program("ADDI x0, x0, 99\nHALT\n")
     cpu.run()
     assert cpu.r(0) == 0
     try:
-        decode(0x00000001)  # opcode 0x01: not a Trinity opcode
+        decode(0x00000001)
     except ValueError:
         pass
     else:
         raise AssertionError("bad opcode did not raise")
     print("   PASS: x0 stays 0; unknown opcodes raise instead of executing.")
-    # FIX: out-of-range immediates must fail loudly, not mask silently.
     try:
         assemble("ADDI x11, x10, 0x2000")
     except ValueError as e:
@@ -874,13 +906,11 @@ def test_encodings():
 
 def test_fixes():
     print("\n== Regression tests for fixes ==")
-    # LUI sign-extends (manual: sext(imm20 << 12))
     cpu = TrinityTile(); cpu.load_program("LUI x5, 0x80000\nHALT\n"); cpu.run()
     assert to_s64(cpu.r(5)) == -(1 << 31), hex(cpu.r(5))
     cpu = TrinityTile(); cpu.load_program("LUI x5, 0x200\nHALT\n"); cpu.run()
     assert cpu.r(5) == 0x200000
     print("   PASS: LUI sign extension")
-    # NOC.REDUCE honours shard count
     cpu = TrinityTile()
     for t, v in ((1, 10), (2, 20), (3, 30)):
         cpu.load_tile_sram(t, TILE_SRAM_BASE + 0x100, [v])
@@ -889,7 +919,6 @@ def test_fixes():
                      "NOC.REDUCE x12, x10, x11\nHALT\n")
     cpu.run(); assert cpu.r(12) == 11, cpu.r(12)
     print("   PASS: NOC.REDUCE shard count (2 shards -> 1+10)")
-    # TCM gap is unmapped; DTCM works
     cpu = TrinityTile(); cpu.write32(0x8000, 7); assert cpu.read32(0x8000) == 7
     try:
         cpu.read32(0x4000)
@@ -898,22 +927,25 @@ def test_fixes():
     else:
         raise AssertionError("TCM gap readable")
     print("   PASS: ITCM/DTCM split, gap faults")
-    # semaphore doorbell lifecycle; ACT does not consume counts
     cpu = TrinityTile(); cpu.last_gemm = (1, 1, 1)
     cpu.sem_armed[0] = True; cpu.semaphores[0] = 2
     cpu._sem_complete(0); assert cpu.semaphores[0] == 1 and cpu.doorbells[0] == 0
     cpu._sem_complete(0); assert cpu.semaphores[0] == 0 and cpu.doorbells[0] == 1
     print("   PASS: semaphore fires doorbell at zero")
-    # CORAL.MAC near end of SRAM must no-op, not crash
     cpu = TrinityTile()
     cpu.load_program("LUI x11, 0x3FF\nCORAL.MAC x13, x11, x11\nHALT\n"); cpu.run()
     assert cpu.r(13) == 0 and cpu.warnings
     print("   PASS: CORAL.MAC output-tile bounds")
+    cpu = TrinityTile()
+    cpu.load_matrix_i8_sram(0, [])
+    cpu.load_matrix_i8_hbm(0, [])
+    print("   PASS: empty matrix load guard")
 
 
 def main():
     if len(sys.argv) > 1:
-        src = open(sys.argv[1]).read()
+        with open(sys.argv[1]) as fh:
+            src = fh.read()
         cpu = TrinityTile(trace=True)
         cpu.load_program(src)
         for addr, word, text in cpu.listing:

@@ -34,8 +34,21 @@ RTL lint (no errors/warnings): `pip install pyslang` then parse `rtl/trinity256_
 - Gateway flits circled the torus forever and rows 2–3 had no HBM path; fixed, plus UCIe ingress and diagonal routing
 - Dual-writer SRAM `always_ff` (illegal) and glitchy `clk & en` gating replaced
 
+## Round 2 RTL fixes
+- Router FIFOs (2-entry, round-robin) with credit that counts the in-flight flit, so back-to-back flits are no longer dropped
+- Quad NoC ingress FIFO; remote reads stall at the head instead of being lost
+- Global NoC / HBM read-response path (`RD_RESP`); HBM response carries the address and the addressed 128-bit lane
+- Gateway column token: one row per cycle reaches the HBM/UCIe tap (costs 3/4 of column-3 east bandwidth)
+- 39-bit HBM addresses; distinct P1 state; `hbm_self_refresh` now blocks HBM requests
+
 ## Known limitations
-- Router has no input FIFOs / credit flow control: simultaneous transit flits collide
-- No read-response path for global NoC or HBM reads
-- `hbm_req_addr` is 34 bits; 288 GB needs 39
-- P1 power state is identical to P0 (HBM self-refresh not modelled)
+- One outstanding off-tile read per tile (`up_owner_q`)
+- Edge and UCIe injection ignore `edge_in_ready`; UCIe transmit has no backpressure
+- Emulator `SEM.ARM` has no destination tile / engine field (the RTL does)
+- RTL is lint-clean (slang, 0 diagnostics) but **not simulated**; FIFO credit rule is checked by `tests/fifo_credit_model.py`, a Python model, not the RTL
+
+## Tests
+```
+python3 emulator/trinity_emu.py
+python3 tests/fifo_credit_model.py
+```
