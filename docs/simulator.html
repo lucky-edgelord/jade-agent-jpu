@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRINITY//256 — RISC-V + Xtrinity Neural ISA Simulator</title>
+<meta name="description" content="Free in-browser simulator for the Trinity-256 ISA: assemble, step, step back, set breakpoints, inspect registers, memory and machine code. No sign-up.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap">
+<style>
+:root{--bg:#06050d;--bg2:#0d0a1c;--panel:#0b0816ee;--cy:#00f0ff;--mg:#ff2a6d;--yl:#f9f002;--gr:#05ffa1;--vi:#9b5cff;--fg:#d6f6ff;--mut:#6f7fa8;--line:#2a2250;
+  --mono:'Share Tech Mono',ui-monospace,Menlo,Consolas,monospace;--disp:'Orbitron','Share Tech Mono',system-ui,sans-serif}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--mono);min-height:100vh;
+  background-image:radial-gradient(900px 500px at 85% -10%,#ff2a6d22,transparent 60%),radial-gradient(800px 500px at -5% 10%,#00f0ff1c,transparent 60%),
+  linear-gradient(#00f0ff08 1px,transparent 1px),linear-gradient(90deg,#00f0ff08 1px,transparent 1px);background-size:auto,auto,36px 36px,36px 36px;background-attachment:fixed}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;background:repeating-linear-gradient(0deg,#0000 0 2px,#00000038 2px 3px);mix-blend-mode:multiply}
+a{color:var(--cy);text-decoration:none}a:hover{color:var(--yl);text-shadow:0 0 8px var(--yl)}
+.wrap{max-width:1500px;margin:0 auto;padding:0 18px}
+nav{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+nav b{font-family:var(--disp);color:var(--mg);text-shadow:0 0 10px var(--mg)}
+nav div a{margin-left:20px}
+header{padding:34px 0 18px}
+h1{font:900 clamp(2rem,6vw,4rem)/1 var(--disp);margin:0;letter-spacing:.04em;color:var(--cy);text-shadow:0 0 12px #00f0ff99,0 0 40px #00f0ff44;position:relative;display:inline-block}
+h1 i{font-style:normal;color:var(--mg);text-shadow:0 0 12px #ff2a6dcc,0 0 40px #ff2a6d55}
+h1::before,h1::after{content:attr(data-t);position:absolute;left:0;top:0;width:100%;overflow:hidden;opacity:.8;pointer-events:none}
+h1::before{color:var(--mg);transform:translate(2px,0);clip-path:inset(0 0 60% 0);animation:gl1 3.2s infinite steps(1)}
+h1::after{color:var(--yl);transform:translate(-2px,0);clip-path:inset(60% 0 0 0);animation:gl2 2.7s infinite steps(1)}
+@keyframes gl1{0%,92%,100%{transform:translate(0)}93%{transform:translate(-4px,1px)}96%{transform:translate(3px,-1px)}}
+@keyframes gl2{0%,88%,100%{transform:translate(0)}89%{transform:translate(4px,-1px)}94%{transform:translate(-3px,1px)}}
+@media (prefers-reduced-motion:reduce){h1::before,h1::after{display:none}*{animation:none!important}}
+.sub{color:var(--mut);margin:10px 0 14px;max-width:760px}
+.tags span{display:inline-block;border:1px solid var(--vi);color:var(--vi);padding:1px 10px;margin:0 8px 8px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 0 8px #9b5cff44 inset}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;margin-bottom:16px}
+@media(max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);position:relative;min-width:0;
+  clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));box-shadow:0 0 0 1px #00f0ff10 inset}
+.panel::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;background:linear-gradient(var(--cy),var(--mg))}
+.tabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-left:6px}
+.tabs button{background:none;border:0;color:var(--mut);font:600 12px var(--disp);letter-spacing:.14em;padding:11px 14px;cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected=true]{color:var(--cy);border-bottom-color:var(--cy);text-shadow:0 0 8px var(--cy)}
+.pane{display:none;padding:12px}.pane.on{display:block}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+button.b,select,input.in{background:#120d2a;color:var(--cy);border:1px solid var(--cy);font:13px var(--mono);padding:6px 12px;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+select,input.in{text-transform:none;max-width:100%}
+input.in{width:110px;cursor:text}
+button.b:hover{background:var(--cy);color:#001418;box-shadow:0 0 14px var(--cy)}
+button.b:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.tabs button:focus-visible{outline:2px solid var(--yl);outline-offset:1px}
+button.go{border-color:var(--gr);color:var(--gr)}button.go:hover{background:var(--gr);box-shadow:0 0 14px var(--gr)}
+button.mg{border-color:var(--mg);color:var(--mg)}button.mg:hover{background:var(--mg);color:#1a0008;box-shadow:0 0 14px var(--mg)}
+button.yl{border-color:var(--yl);color:var(--yl)}button.yl:hover{background:var(--yl);color:#161400;box-shadow:0 0 14px var(--yl)}
+.sp{flex:1}
+.editor{display:flex;border:1px solid var(--line);background:#07051266;height:430px}
+#gut{width:54px;flex:none;overflow:hidden;background:#0a0720;border-right:1px solid var(--line);padding:10px 0;color:var(--mut);font:13px/20px var(--mono);user-select:none}
+#gut div{height:20px;padding-right:8px;text-align:right;cursor:pointer;position:relative}
+#gut div:hover{color:var(--fg)}
+#gut div.bp{color:#fff}#gut div.bp::before{content:"";position:absolute;left:6px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--mg);box-shadow:0 0 8px var(--mg)}
+#gut div.cur{background:#05ffa122;color:var(--gr)}#gut div.cur::after{content:"▶";position:absolute;left:20px;color:var(--gr);font-size:10px}
+#ed{flex:1;min-width:0;resize:none;border:0;background:transparent;color:var(--fg);font:13px/20px var(--mono);padding:10px;white-space:pre;overflow:auto;tab-size:2;caret-color:var(--yl)}
+.stat{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.stat b{color:var(--cy);font-weight:400}.stat .st{color:var(--gr)}.stat .st.h{color:var(--mg)}
+.regs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 12px;font-size:12.5px}
+@media(max-width:640px){.regs{grid-template-columns:minmax(0,1fr)}}
+.reg{display:grid;grid-template-columns:34px 38px minmax(0,1fr);gap:6px;padding:2px 6px;border-left:2px solid transparent;align-items:baseline}
+.reg b{color:var(--vi);font-weight:400}.reg i{color:var(--mut);font-style:normal}
+.reg code{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reg code em{color:var(--mut);font-style:normal;margin-left:8px}
+.reg.chg{border-left-color:var(--yl);background:#f9f00018}.reg.chg code{color:var(--yl);text-shadow:0 0 6px #f9f00088}
+.mem{font-size:12.5px;overflow:auto;max-height:420px}
+.mem div{white-space:pre;padding:0 2px}.mem .a{color:var(--vi)}.mem .asc{color:var(--mut)}.mem .z{color:#3d3a66}.mem .chg{color:var(--yl);text-shadow:0 0 6px #f9f00088}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:4px 8px;border-bottom:1px solid #1d1740;white-space:nowrap}
+th{color:var(--mut);font:600 11px var(--disp);letter-spacing:.14em;position:sticky;top:0;background:#0b0816}
+tr.cur td{background:#05ffa120;color:var(--gr)}tr.bp td:first-child{color:var(--mg)}
+#codewrap{max-height:430px;overflow:auto;border:1px solid var(--line)}
+tbody tr.row{cursor:pointer}tbody tr.row:hover td{background:#00f0ff10}
+.con{height:230px;overflow:auto;background:#05030d;border:1px solid var(--line);padding:8px 10px;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+.con .ok{color:var(--gr)}.con .err{color:var(--mg)}.con .warn{color:var(--yl)}.con .out{color:var(--cy)}.con .inf{color:var(--mut)}
+.ref{font-size:13px;max-height:480px;overflow:auto;padding-right:6px}
+.ref h3{font:700 13px var(--disp);letter-spacing:.14em;color:var(--mg);margin:16px 0 6px;text-transform:uppercase}
+.ref p,.ref li{color:#b9c8e6;margin:4px 0}.ref code{color:var(--yl)}
+kbd{border:1px solid var(--mut);padding:0 5px;color:var(--fg);font-size:12px}
+.hint{color:var(--mut);font-size:12px;margin:8px 0 0}
+section.info{border-top:1px solid var(--line);padding:26px 0;color:#b9c8e6}
+section.info h2{font:700 1.1rem var(--disp);letter-spacing:.12em;color:var(--cy);text-transform:uppercase;margin:0 0 12px}
+section.info ol,section.info ul{padding-left:20px;margin:6px 0}
+footer{padding:22px 0 50px;color:var(--mut);font-size:12px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav><b>◢ TRINITY//256</b><div><a href="index.html">Project</a><a href="https://github.com/lucky-edgelord/jade-agent-jpu">GitHub</a><a href="#ref" data-open="ref">Reference</a></div></nav>
+  <header>
+    <h1 data-t="TRINITY//256">TRINITY<i>//</i>256</h1>
+    <p class="sub">Free in-browser simulator for the Trinity-256 RISC-V + <b>Xtrinity</b> neural ISA. Write assembly, step through it, step <em>back</em>, set breakpoints, and watch registers, SRAM and machine code change. The NVDLA GEMM, Coral MAC/activation and NoC reduce engines do real arithmetic.</p>
+    <div class="tags"><span>Step back &amp; breakpoints</span><span>Machine code in hex</span><span>No sign-up</span><span>Runs in your browser</span></div>
+  </header>
+
+  <main id="riscv-tool">
+  <div class="grid">
+    <!-- LEFT: editor / machine code / reference -->
+    <section class="panel" aria-label="Program">
+      <div class="tabs" role="tablist" data-group="L">
+        <button role="tab" aria-selected="true" data-tab="editor">Editor</button>
+        <button role="tab" aria-selected="false" data-tab="code">Machine code</button>
+        <button role="tab" aria-selected="false" data-tab="ref" id="refTab">Reference</button>
+      </div>
+      <div class="pane on" data-pane="L:editor">
+        <div class="bar">
+          <select id="exSel" aria-label="Start from an example"></select>
+          <button class="b" id="btnAsm" title="Assemble and load">Assemble</button>
+          <button class="b go" id="btnRun" title="Run to halt or breakpoint (Ctrl+Enter)">▶ Run</button>
+          <button class="b" id="btnStep" title="Execute one instruction (F10)">Step</button>
+          <button class="b yl" id="btnBack" title="Undo the last instruction, incl. registers, memory and output (Shift+F10)">◀ Back</button>
+          <button class="b mg" id="btnReset" title="Reset state, keep program">Reset</button>
+          <span class="sp"></span>
+          <button class="b" id="btnOpen" title="Open a .asm / .s file">Open</button>
+          <button class="b" id="btnSave" title="Download source as .asm">Save .asm</button>
+          <input type="file" id="file" accept=".s,.asm,.txt" hidden>
+        </div>
+        <div class="editor"><div id="gut" aria-hidden="true"></div>
+          <textarea id="ed" spellcheck="false" wrap="off" aria-label="Assembly source"></textarea></div>
+        <p class="hint">Click a line number to toggle a breakpoint. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> run · <kbd>F10</kbd> step · <kbd>Shift</kbd>+<kbd>F10</kbd> step back. Your program is saved in this browser.</p>
+        <div class="stat"><span>State <b class="st" id="sState">READY</b></span><span>PC <b id="sPc">0x0000</b></span><span>Cycles <b id="sCyc">0</b></span><span>Power <b id="sPwr">P3</b></span><span>Sem0 <b id="sSem">0</b></span><span>NVDLA MACs <b id="sNv">0</b></span><span>Coral MACs <b id="sCo">0</b></span><span>History <b id="sHist">0</b></span></div>
+      </div>
+      <div class="pane" data-pane="L:code">
+        <div class="bar"><button class="b" id="btnCopyHex">Copy as hex</button><button class="b" id="btnHex">Download .hex</button><button class="b" id="btnBin">Download .bin</button><span class="hint" style="margin:0">Click a row to toggle a breakpoint.</span></div>
+        <div id="codewrap"><table><thead><tr><th>ADDR</th><th>HEX</th><th>DECODED</th><th>SOURCE LINE</th><th>RUNS</th></tr></thead><tbody id="codeBody"></tbody></table></div>
+      </div>
+      <div class="pane" data-pane="L:ref"><div class="ref" id="ref">
+        <h3>Instructions</h3>
+        <table><thead><tr><th>MNEMONIC</th><th>FORMAT</th><th>ENCODING</th><th>EFFECT</th></tr></thead><tbody>
+          <tr><td>ADD SUB MUL AND OR XOR rd,rs1,rs2</td><td>R</td><td>op 0x33</td><td>integer ALU (MUL = f7 1)</td></tr>
+          <tr><td>ADDI rd,rs1,imm</td><td>I</td><td>op 0x13</td><td>imm is signed 12-bit; out of range is an error</td></tr>
+          <tr><td>LUI rd,imm20</td><td>U</td><td>op 0x37</td><td>rd = sext(imm20 &lt;&lt; 12)</td></tr>
+          <tr><td>LW rd,off(rs1) · SW rs2,off(rs1)</td><td>I / S</td><td>0x03 / 0x23</td><td>32-bit load / store</td></tr>
+          <tr><td>BEQ BNE rs1,rs2,label</td><td>B</td><td>op 0x63</td><td>PC-relative branch</td></tr>
+          <tr><td>JAL rd,label</td><td>J</td><td>op 0x6F</td><td>rd = PC+4; jump</td></tr>
+          <tr><td>ECALL</td><td>I</td><td>0x73</td><td>a7=1: print a0. Anything else halts.</td></tr>
+          <tr><td>CORAL.MAC rd,rs1,rs2</td><td>R</td><td>0x0B f3=1 f7=1</td><td>16×16 INT8 tile multiply; rd = 256</td></tr>
+          <tr><td>CORAL.ACT rd,rs1,imm</td><td>I</td><td>0x0B f3=2</td><td>imm 0 ReLU · 1 SwiGLU · 2 Softmax · 3 RMSNorm</td></tr>
+          <tr><td>NVDLA.GEMM rd,rs1,rs2</td><td>R</td><td>0x2B f3=1 f7=2</td><td>M=R[rs1], N=R[rs2], K=x15; rd = MACs</td></tr>
+          <tr><td>SEM.ARM rs1,imm</td><td>I</td><td>0x5B f3=1</td><td>arm semaphore R[rs1]&amp;63 with count imm</td></tr>
+          <tr><td>PWR.MODE imm</td><td>I</td><td>0x5B f3=2</td><td>0 P0 · 1 P1 · 2 P2 · 3 P3 sentinel</td></tr>
+          <tr><td>NOC.REDUCE rd,rs1,rs2</td><td>R</td><td>0x5B f3=3 f7=4</td><td>sum the word at R[rs1] over R[rs2] tiles (0 = 4)</td></tr>
+          <tr><td>HALT</td><td>—</td><td>0x7F</td><td>stop</td></tr>
+        </tbody></table>
+        <h3>Emulator ABI v1 (spec gaps, filled in)</h3>
+        <ul>
+          <li><code>NVDLA.GEMM</code>: K comes from <code>x15</code>. A (INT8 M×K) at Tile SRAM <code>0x1000</code>, B (INT8 K×N) at HBM <code>0</code>, C (INT32 M×N) written at Tile SRAM <code>0</code>.</li>
+          <li><code>CORAL.ACT</code>: <code>R[rs1]</code> is a Tile SRAM address (base <code>0x00200000</code>); it runs in place over the last GEMM's M×N elements. Values are INT32 milli-units.</li>
+          <li><code>CORAL.MAC</code>: A tile at <code>R[rs1]</code>, B at <code>R[rs2]</code>, 16×16 INT32 result at <code>R[rs1]+0x1000</code>.</li>
+          <li><code>NOC.REDUCE</code>: tiles 1–3 are preloaded with <code>.shard</code>.</li>
+        </ul>
+        <h3>Preload directives (this simulator)</h3>
+        <ul>
+          <li><code>.sram OFFSET v,v,…</code> INT8 bytes into Tile SRAM · <code>.hbm OFFSET v,…</code> INT8 bytes into HBM · <code>.shard TILE OFFSET w,…</code> 32-bit words into shard tile 1–3's SRAM.</li>
+        </ul>
+        <h3>Address map</h3>
+        <ul><li>ITCM <code>0x0000</code> 8 KB · DTCM <code>0x8000</code> 32 KB · NVDLA CSB <code>0x100000</code> · Tile SRAM <code>0x200000</code> 2 MB · Quad SRAM <code>0x1000000</code> 4 MB · Semaphores <code>0x1400000</code> · HBM <code>0x800000000000</code> (4 MB window modelled)</li></ul>
+        <h3>Syscalls</h3>
+        <ul><li><code>ECALL</code> with <code>a7 = 1</code> prints <code>a0</code> (signed) to the console. Any other <code>a7</code> halts.</li></ul>
+      </div></div>
+    </section>
+
+    <!-- RIGHT: registers / memory -->
+    <section class="panel" aria-label="State">
+      <div class="tabs" role="tablist" data-group="R">
+        <button role="tab" aria-selected="true" data-tab="regs">Registers</button>
+        <button role="tab" aria-selected="false" data-tab="mem">Memory</button>
+        <button role="tab" aria-selected="false" data-tab="sem">Semaphores</button>
+      </div>
+      <div class="pane on" data-pane="R:regs"><div class="regs" id="regs"></div></div>
+      <div class="pane" data-pane="R:mem">
+        <div class="bar">
+          <select id="memReg" aria-label="Memory region"><option value="sram">Tile SRAM (0x200000)</option><option value="hbm">HBM (0x8000_0000_0000)</option><option value="quad">Quad SRAM (0x1000000)</option><option value="tcm">Coral TCM (0x0)</option><option value="s1">Shard tile 1 SRAM</option><option value="s2">Shard tile 2 SRAM</option><option value="s3">Shard tile 3 SRAM</option></select>
+          <label>offset 0x<input class="in" id="memOff" value="0" aria-label="Offset in hex"></label>
+          <select id="memMode" aria-label="View"><option value="b">bytes</option><option value="w">int32</option></select>
+          <button class="b" id="memPrev">◀</button><button class="b" id="memNext">▶</button>
+        </div>
+        <div class="mem" id="mem"></div>
+        <p class="hint">Bytes written by the last instruction are highlighted.</p>
+      </div>
+      <div class="pane" data-pane="R:sem"><div class="mem" id="semView"></div></div>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Output">
+    <div class="tabs" role="tablist" data-group="B">
+      <button role="tab" aria-selected="true" data-tab="con">Console</button>
+      <button role="tab" aria-selected="false" data-tab="trace">Trace</button>
+    </div>
+    <div class="pane on" data-pane="B:con"><div class="con" id="con" role="log" aria-live="polite"></div></div>
+    <div class="pane" data-pane="B:trace"><div class="con" id="trace"></div></div>
+  </section>
+  </main>
+
+  <section class="info">
+    <h2>How to run Trinity-256 assembly online</h2>
+    <ol><li>Pick an example, or type assembly. Use <code>.sram</code> / <code>.hbm</code> directives to preload matrices.</li><li>Press <b>Run</b> to execute, or <b>Step</b> to go one instruction at a time. <b>Back</b> undoes it exactly.</li><li>Open <b>Machine code</b> to see each instruction's address, hex word and run count; copy or download it.</li></ol>
+    <h2 style="margin-top:22px">Tips for debugging</h2>
+    <ul><li>Set a breakpoint before an engine instruction, then inspect Tile SRAM after stepping over it.</li><li>The console warns whenever the spec's missing details (gaps G1–G5) change the result, e.g. GEMM with <code>x15 = 0</code>.</li><li>Immediates are 12-bit; build larger constants with <code>LUI</code> + <code>ADDI</code>.</li></ul>
+  </section>
+  <footer>Trinity-256 simulator · JavaScript port of <a href="https://github.com/lucky-edgelord/jade-agent-jpu/blob/main/emulator/trinity_emu.py">trinity_emu.py</a> · single tile, 4 simulated tiles for AllReduce · not cycle-accurate to silicon.</footer>
+</div>
+<script src="trinity_emu.js"></script>
+<script src="simulator.js"></script>
+</body>
+</html>

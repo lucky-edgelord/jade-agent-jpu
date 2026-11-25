@@ -8,7 +8,13 @@ Heterogeneous many-core RISC-V + neural tensor superchip (256 tiles: RV64 + Cora
 | --- | --- |
 | `emulator/trinity_emu.py` | Single-file, stdlib-only ISA emulator (assembler → decoder → real GEMM / MAC / ACT / AllReduce). |
 | `rtl/trinity256_rtl.sv` | Hierarchical SystemVerilog: tile → quad → torus router → chiplet → package. |
+| `docs/simulator.html` | [Web simulator](https://lucky-edgelord.github.io/jade-agent-jpu/simulator.html) (UI: `simulator.js`, engine: `trinity_emu.js`). |
 | `docs/index.html` | [Project webpage](https://lucky-edgelord.github.io/jade-agent-jpu/) (served by GitHub Pages from `/docs`). |
+
+## Web simulator
+Cyberpunk in-browser simulator (editor, breakpoints, step back, registers, memory, machine-code hex): <https://lucky-edgelord.github.io/jade-agent-jpu/simulator.html>
+
+It is a JavaScript port of the emulator: `docs/trinity_emu.js` (works in the browser and Node) + `docs/simulator.html` + `docs/simulator.js`.
 
 ## Run
 ```
@@ -51,4 +57,5 @@ RTL lint (no errors/warnings): `pip install pyslang` then parse `rtl/trinity256_
 ```
 python3 emulator/trinity_emu.py
 python3 tests/fifo_credit_model.py
+node tests/emu_js_test.js      # JS port vs Python results, step-back, breakpoints
 ```
